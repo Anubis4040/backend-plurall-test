@@ -7,7 +7,7 @@ import {
   importTasksFromCSV,
   upload
 } from '../controllers/reportController.js'
-import { authenticateToken, authorizeRoles } from '../modules/auth/middlewares/auth.js'
+import { authenticateToken, authorizeRoles } from '../../auth/middlewares/auth.js'
 
 const router = express.Router()
 

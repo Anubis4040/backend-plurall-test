@@ -1,7 +1,7 @@
 import express from 'express'
 import { register, login, getProfile } from '../controllers/authController.js'
 import { authenticateToken } from '../middlewares/auth.js'
-import { authLimiter } from '../../../middleware/rateLimiter.js'
+import { authLimiter } from '../../shared/middlewares/rateLimiter.js'
 
 const router = express.Router()
 

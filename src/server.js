@@ -4,11 +4,11 @@ import helmet from 'helmet'
 import { connectDB } from './config/database.js'
 import logger from './utils/logger.js'
 import authRoutes from './modules/auth/routes/auth.js'
-// import userRoutes from './routes/users.js'
-import taskRoutes from './routes/tasks.js'
-import reportRoutes from './routes/reports.js'
-import { errorHandler } from './middleware/errorHandler.js'
-import { rateLimiter } from './middleware/rateLimiter.js'
+import userRoutes from './modules/user/routes/user-routes.js'
+import taskRoutes from './modules/shared/routes/tasks.js'
+import reportRoutes from './modules/shared/routes/reports.js'
+import { errorHandler } from './modules/shared/middlewares/errorHandler.js'
+import { rateLimiter } from './modules/shared/middlewares/rateLimiter.js'
 import { PORT, NODE_ENV, DB_HOST } from './config/env.js'
 
 const app = express()
@@ -27,7 +27,7 @@ connectDB()
 // TODO: Optomizar rutas para que no todas usen /api
 
 app.use('/api/auth', authRoutes)
-// app.use('/api/users', userRoutes)
+app.use('/api/users', userRoutes)
 app.use('/api/tasks', taskRoutes)
 app.use('/api/reports', reportRoutes)
 
