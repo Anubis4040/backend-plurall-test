@@ -7,7 +7,7 @@ import {
   deleteTask,
   addComment
 } from '../controllers/taskController.js'
-import { authenticateToken, authorizeRoles } from '../middleware/auth.js'
+import { authenticateToken, authorizeRoles } from '../modules/auth/middlewares/auth.js'
 
 const router = express.Router()
 

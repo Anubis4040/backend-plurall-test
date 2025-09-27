@@ -1,7 +1,7 @@
-import { query } from '../config/database.js'
+import { query } from '../../../config/database.js'
 import bcrypt from 'bcryptjs'
-import { generateToken } from '../middleware/auth.js'
-import logger from '../utils/logger.js'
+import { generateToken } from '../middlewares/auth.js'
+import logger from '../../../utils/logger.js'
 
 export const register = async (req, res) => {
   try {
