@@ -1,17 +1,20 @@
 import pkg from 'pg'
 const { Pool } = pkg
 import logger from '../utils/logger.js'
+import { DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD } from './env.js'
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || 'plurall_test',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'password',
+  host: DB_HOST,
+  port: DB_PORT,
+  database: DB_NAME,
+  user: DB_USER,
+  password: DB_PASSWORD,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 })
+
+logger.info(`🗄️ Config pool DB host=${DB_HOST} db=${DB_NAME} user=${DB_USER}`)
 
 export const connectDB = async () => {
   try {
@@ -19,7 +22,7 @@ export const connectDB = async () => {
     logger.info('✅ Conectado a PostgreSQL')
     client.release()
   } catch (error) {
-    logger.error('❌ Error conectando a PostgreSQL:', error.message)
+    logger.error('❌ Error conectando a PostgreSQL:', error);
   }
 }
 
