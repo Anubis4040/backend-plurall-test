@@ -15,7 +15,7 @@ router.post('/', authenticateToken, createTask)
 router.get('/', authenticateToken, getTasks)
 router.get('/:id', authenticateToken, getTaskById)
 
-router.put('/:id', authenticateToken, updateTask)
+router.put('/:id', authenticateToken , authorizeRoles('admin', 'manager'), updateTask)
 router.delete('/:id', authenticateToken, deleteTask)
 
 router.post('/:id/comments', authenticateToken, addComment)

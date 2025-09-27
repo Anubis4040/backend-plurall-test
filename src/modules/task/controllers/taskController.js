@@ -36,7 +36,7 @@ export const createTask = async (req, res) => {
       task
     })
   } catch (error) {
-    logger.error('Error creando tarea:', error.message)
+    logger.error(`Error creando tarea: ${error.message}`)
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
@@ -177,40 +177,42 @@ export const getTaskById = async (req, res) => {
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params
-    const { title, description, status, priority, assigned_to, due_date, estimated_hours, actual_hours } = req.body
+    // Campos permitidos para actualización
+    const allowed = ['title','description','status','priority','assigned_to','due_date','estimated_hours','actual_hours']
+    const entries = Object.entries(req.body).filter(([k]) => allowed.includes(k))
 
-    const updateQuery = `
-      UPDATE tasks
-      SET
-        title = COALESCE($1, title),
-        description = COALESCE($2, description),
-        status = COALESCE($3, status),
-        priority = COALESCE($4, priority),
-        assigned_to = COALESCE($5, assigned_to),
-        due_date = COALESCE($6, due_date),
-        estimated_hours = COALESCE($7, estimated_hours),
-        actual_hours = COALESCE($8, actual_hours),
-        updated_at = CURRENT_TIMESTAMP,
-        completed_at = CASE WHEN $3 = 'completed' AND completed_at IS NULL THEN CURRENT_TIMESTAMP ELSE completed_at END
-      WHERE id = $9
-      RETURNING *
-    `
+    if (entries.length === 0) {
+      return res.status(400).json({ error: 'No hay campos válidos para actualizar' })
+    }
 
-    const result = await query(updateQuery, [
-      title, description, status, priority, assigned_to, due_date, estimated_hours, actual_hours, id
-    ])
+    // Construcción dinámica de SET
+    const setFragments = entries.map(([k], idx) => `${k} = $${idx + 1}`)
+    const values = entries.map(([, v]) => v)
 
+    // Manejo especial de completed_at si status -> 'completed'
+    // Construimos un fragmento adicional para la consulta
+    let completedAtFragment = ''
+    const statusIndex = entries.findIndex(([k]) => k === 'status')
+    if (statusIndex !== -1) {
+      // El valor de status estará en values[statusIndex]
+      const newStatus = values[statusIndex]
+      if (newStatus === 'completed') {
+        completedAtFragment = ', completed_at = CASE WHEN completed_at IS NULL THEN CURRENT_TIMESTAMP ELSE completed_at END'
+      }
+    }
+
+    // Siempre actualizamos updated_at
+    const setClause = setFragments.join(', ') + ', updated_at = CURRENT_TIMESTAMP' + completedAtFragment
+    values.push(id)
+    const updateQuery = `UPDATE tasks SET ${setClause} WHERE id = $${values.length} RETURNING *`
+
+    const result = await query(updateQuery, values)
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tarea no encontrada' })
     }
 
     logger.info(`Tarea actualizada: ${result.rows[0].title}`)
-
-    res.json({
-      success: true,
-      message: 'Tarea actualizada exitosamente',
-      task: result.rows[0]
-    })
+    res.json({ success: true, message: 'Tarea actualizada exitosamente', task: result.rows[0] })
   } catch (error) {
     logger.error('Error actualizando tarea:', error.message)
     res.status(500).json({ error: 'Error interno del servidor' })
