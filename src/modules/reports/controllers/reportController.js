@@ -4,16 +4,34 @@ import multer from 'multer'
 import csvParser from 'csv-parser'
 import fs from 'fs'
 
+// TODO: Crear cron job para borrar archivos subidos hace más de X tiempo
+
+const ensureUploads = () => {
+  if (!fs.existsSync('uploads')) {
+    fs.mkdirSync('uploads', { recursive: true })
+  }
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    ensureUploads()
     cb(null, 'uploads/')
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`)
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')
+    cb(null, `${Date.now()}-${safeName}`)
   }
 })
 
-export const upload = multer({ storage })
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+    cb(null, true)
+  } else {
+    cb(new Error('Solo se permiten archivos CSV'))
+  }
+}
+
+export const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }) // 5MB
 
 export const getDashboardStats = async (req, res) => {
   try {
