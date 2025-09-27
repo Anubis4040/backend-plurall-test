@@ -18,5 +18,6 @@ export const authLimiter = rateLimit({
   message: {
     error: 'Demasiados intentos de login, intenta más tarde',
   },
-  skipSuccessfulRequests: false
+  // Definido en true para que no cuente los logins exitosos
+  skipSuccessfulRequests: true
 })

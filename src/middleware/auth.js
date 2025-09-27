@@ -1,5 +1,4 @@
 import jwt from 'jsonwebtoken'
-// import User from '../models/User.js'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mi-secret-super-seguro'
 
@@ -40,7 +39,7 @@ export const authorizeRoles = (...roles) => {
 export const generateToken = (user) => {
   return jwt.sign(
     {
-      userId: user._id,
+      userId: user.id,
       username: user.username,
       role: user.role,
       email: user.email

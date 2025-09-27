@@ -7,6 +7,7 @@ export const register = async (req, res) => {
   try {
     const { username, email, password, first_name, last_name } = req.body
 
+    // TODO: Refactorizar las validaciones usando Zod
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Faltan campos requeridos' })
     }

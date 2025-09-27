@@ -20,6 +20,7 @@ export const DB_PORT = Number(process.env.DB_PORT || 5432)
 export const DB_NAME = process.env.DB_NAME || 'plurall_test'
 export const DB_USER = process.env.DB_USER || 'postgres'
 export const DB_PASSWORD = process.env.DB_PASSWORD || 'password'
+export const DB_TIMEZONE = process.env.DB_TIMEZONE || 'UTC'
 
 // Ejemplo para otras variables sensibles (JWT, etc.)
 export const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret'
@@ -32,6 +33,7 @@ export function summaryEnv() {
     DB_PORT,
     DB_NAME,
     DB_USER,
+    DB_TIMEZONE,
     HAS_DB_PASSWORD: !!DB_PASSWORD,
     HAS_JWT_SECRET: !!JWT_SECRET
   }

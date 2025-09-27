@@ -3,7 +3,7 @@ import cors from 'cors'
 import helmet from 'helmet'
 import { connectDB } from './config/database.js'
 import logger from './utils/logger.js'
-import authRoutes from './routes/auth.js'
+import authRoutes from './modules/auth/routes/auth.js'
 // import userRoutes from './routes/users.js'
 import taskRoutes from './routes/tasks.js'
 import reportRoutes from './routes/reports.js'
@@ -23,6 +23,8 @@ app.use(express.json())
 app.use('/api', rateLimiter)
 
 connectDB()
+
+// TODO: Optomizar rutas para que no todas usen /api
 
 app.use('/api/auth', authRoutes)
 // app.use('/api/users', userRoutes)
