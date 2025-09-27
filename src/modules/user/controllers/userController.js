@@ -92,7 +92,7 @@ export const updateUser = async (req, res) => {
     const setFragments = entries.map(([k], idx) => `${k} = $${idx+1}`)
     const values = entries.map(([,v]) => v)
     values.push(id)
-    const updateQuery = `UPDATE users SET ${setFragments.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${values.length} RETURNING id, username, email, role, first_name, last_name, avatar_url, is_active, email_verified, last_login, created_at, updated_at`;
+    const updateQuery = `UPDATE users SET ${setFragments.join(', ')} WHERE id = $${values.length} RETURNING id, username, email, role, first_name, last_name, avatar_url, is_active, email_verified, last_login, created_at, updated_at`;
 
     const result = await query(updateQuery, values)
     if (result.rows.length === 0) {

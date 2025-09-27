@@ -202,7 +202,7 @@ export const updateTask = async (req, res) => {
     }
 
     // Siempre actualizamos updated_at
-    const setClause = setFragments.join(', ') + ', updated_at = CURRENT_TIMESTAMP' + completedAtFragment
+    const setClause = setFragments.join(', ') + completedAtFragment
     values.push(id)
     const updateQuery = `UPDATE tasks SET ${setClause} WHERE id = $${values.length} RETURNING *`
 
