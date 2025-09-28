@@ -1,0 +1,798 @@
+openapi: 3.1.0
+info:
+  title: Plurall Backend API
+  description: |
+    API para gestión de proyectos, tareas, usuarios y reportes.
+    Esta especificación se generó a partir del código existente.
+  version: 1.0.0
+  contact:
+    name: Plurall Team
+servers:
+  - url: http://localhost:3000/api
+    description: Local Dev
+  - url: https://api.example.com/api
+    description: Production (placeholder)
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Tasks
+  - name: Reports
+  - name: Projects
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ErrorResponse:
+      description: Respuesta de error genérica
+      type: object
+      properties:
+        error:
+          type: string
+    PaginationMeta:
+      description: Metadatos de paginación estándar
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 120 }
+        total_pages: { type: integer, example: 6 }
+        has_next: { type: boolean, example: true }
+        has_prev: { type: boolean, example: false }
+    User:
+      description: Representación de un usuario del sistema
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [user, admin, manager] }
+        first_name: { type: string, nullable: true }
+        last_name: { type: string, nullable: true }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+    UserCreate:
+      description: Payload para creación de usuario
+      type: object
+      required: [username, email, password]
+      properties:
+        username: { type: string }
+        email: { type: string }
+        password: { type: string, format: password }
+        role: { type: string, enum: [user, admin, manager] }
+    UserUpdate:
+      description: Campos permitidos para actualizar un usuario
+      type: object
+      properties:
+        username: { type: string }
+        first_name: { type: string }
+        last_name: { type: string }
+        role: { type: string, enum: [user, admin, manager] }
+        is_active: { type: boolean }
+    Task:
+      description: Representación de una tarea
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+        priority: { type: string, enum: [low, medium, high, urgent] }
+        project_id: { type: string, format: uuid, nullable: true }
+        assigned_to: { type: string, format: uuid, nullable: true }
+        created_by: { type: string, format: uuid, nullable: true }
+        due_date: { type: string, format: date-time, nullable: true }
+        completed_at: { type: string, format: date-time, nullable: true }
+        estimated_hours: { type: integer, nullable: true }
+        actual_hours: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time }
+    TaskCreate:
+      description: Payload para crear una tarea
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        project_id: { type: string, format: uuid }
+        assigned_to: { type: string, format: uuid }
+        priority: { type: string, enum: [low, medium, high, urgent] }
+        estimated_hours: { type: integer }
+    TaskUpdate:
+      description: Campos permitidos para actualizar una tarea
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+        priority: { type: string, enum: [low, medium, high, urgent] }
+        assigned_to: { type: string, format: uuid }
+        estimated_hours: { type: integer }
+        actual_hours: { type: integer }
+    TaskComment:
+      description: Comentario asociado a una tarea
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        content: { type: string }
+        created_at: { type: string, format: date-time }
+    DashboardStats:
+      description: Estadísticas globales para dashboard
+      type: object
+      properties:
+        total_users: { type: integer }
+        total_projects: { type: integer }
+        total_tasks: { type: integer }
+        completed_tasks: { type: integer }
+    ProductivityReportRow:
+      description: Fila individual del reporte de productividad de usuarios
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        first_name: { type: string, nullable: true }
+        last_name: { type: string, nullable: true }
+        total_tasks: { type: integer }
+        completed_tasks: { type: integer }
+        in_progress_tasks: { type: integer }
+        efficiency_ratio: { type: number, nullable: true }
+        efficiency_ratio_weighted: { type: number, nullable: true }
+        total_hours_worked: { type: number }
+    ProjectReportRow:
+      description: Fila individual del reporte de proyectos
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string }
+        start_date: { type: string, format: date, nullable: true }
+        end_date: { type: string, format: date, nullable: true }
+        budget: { type: string, nullable: true }
+        owner_username: { type: string, nullable: true }
+        total_tasks: { type: integer }
+        completed_tasks: { type: integer }
+        pending_tasks: { type: integer }
+        in_progress_tasks: { type: integer }
+        completion_percentage: { type: number, nullable: true }
+        total_estimated_hours: { type: integer }
+        total_actual_hours: { type: integer }
+        time_efficiency_percentage: { type: number, nullable: true }
+    TimeAnalysisRow:
+      description: Fila de análisis de tracking de tiempo
+      type: object
+      properties:
+        period: { type: string, format: date-time }
+        active_users: { type: integer }
+        total_entries: { type: integer }
+        total_hours: { type: number }
+        avg_hours_per_entry: { type: number }
+        tasks_worked_on: { type: integer }
+        projects_involved: { type: integer }
+    ProductivityRankingRow:
+      description: Fila individual del ranking de productividad
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        total_tasks: { type: integer }
+        completed_tasks: { type: integer }
+        completion_rate: { type: number, nullable: true }
+        hours_worked: { type: number }
+        efficiency_ratio: { type: number, nullable: true }
+        rank: { type: integer }
+    TimelineEvent:
+      description: Evento del timeline de un proyecto
+      type: object
+      properties:
+        event_type: { type: string, enum: [task_created, task_commented, time_logged] }
+        occurred_at: { type: string, format: date-time }
+        actor_id: { type: string, format: uuid, nullable: true }
+        actor_username: { type: string, nullable: true }
+        task_id: { type: string, format: uuid, nullable: true }
+        task_title: { type: string, nullable: true }
+        comment_id: { type: string, format: uuid, nullable: true }
+        comment_excerpt: { type: string, nullable: true }
+        hours_logged: { type: number, nullable: true }
+    Project:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [active, completed, archived, cancelled] }
+        start_date: { type: string, format: date, nullable: true }
+        end_date: { type: string, format: date, nullable: true }
+        budget: { type: string, nullable: true }
+        owner_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+    ImportTasksResult:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        imported: { type: integer }
+        errors: { type: integer }
+        error_details:
+          type: array
+          items:
+            type: object
+            properties:
+              row: { type: object, additionalProperties: true }
+              error: { type: string }
+    BasicSuccess:
+      type: object
+      properties:
+        success: { type: boolean }
+    AuthTokenResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+    ProductivityReportResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        report:
+          type: array
+          items: { $ref: '#/components/schemas/ProductivityReportRow' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+    ProjectReportResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        projects:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectReportRow' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+    ProductivityRankingResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        ranking:
+          type: array
+          items: { $ref: '#/components/schemas/ProductivityRankingRow' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+    TimelineResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/TimelineEvent' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+        meta:
+          type: object
+          properties:
+            project_id: { type: string, format: uuid }
+            applied_types: { type: array, items: { type: string }, nullable: true }
+            start_date: { type: string, format: date-time, nullable: true }
+            end_date: { type: string, format: date-time, nullable: true }
+  parameters:
+    PageParam:
+      in: query
+      name: page
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+    LimitParam:
+      in: query
+      name: limit
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    StartDateParam:
+      in: query
+      name: start_date
+      schema: { type: string, format: date-time }
+      required: false
+    EndDateParam:
+      in: query
+      name: end_date
+      schema: { type: string, format: date-time }
+      required: false
+    TaskStatusParam:
+      in: query
+      name: status
+      required: false
+      schema: { type: string, enum: [pending, in_progress, completed, cancelled] }
+      description: Filtrar por status exacto de la tarea
+    TaskPriorityParam:
+      in: query
+      name: priority
+      required: false
+      schema: { type: string, enum: [low, medium, high, urgent] }
+      description: Filtrar por prioridad
+    TaskAssignedToParam:
+      in: query
+      name: assigned_to
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtrar por usuario asignado
+    TaskProjectIdParam:
+      in: query
+      name: project_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtrar por proyecto
+    TaskSortByParam:
+      in: query
+      name: sort_by
+      required: false
+      schema:
+        type: string
+        enum: [created_at, due_date, priority, estimated_hours, actual_hours]
+      description: Campo para ordenar (default created_at)
+    TaskOrderParam:
+      in: query
+      name: order
+      required: false
+      schema: { type: string, enum: [asc, desc] }
+      description: Dirección de orden (default desc)
+    NotificationUnreadParam:
+      in: query
+      name: unread
+      required: false
+      schema: { type: boolean }
+      description: Si se incluye (unread=true) devuelve solo no leídas
+    NotificationSortByParam:
+      in: query
+      name: sort_by
+      required: false
+      schema: { type: string, enum: [created_at, title, is_read] }
+      description: Campo para ordenar notificaciones (default created_at)
+    NotificationOrderParam:
+      in: query
+      name: order
+      required: false
+      schema: { type: string, enum: [asc, desc] }
+      description: Dirección de orden (default desc)
+    ProjectReportStatusParam:
+      in: query
+      name: status
+      required: false
+      schema: { type: string, enum: [active, completed, archived, cancelled] }
+      description: Filtrar reportes de proyecto por status
+    ProjectReportOwnerParam:
+      in: query
+      name: owner_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtrar proyectos por owner
+    TimeAnalysisUserParam:
+      in: query
+      name: user_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Limitar análisis a un usuario
+    TimeAnalysisProjectParam:
+      in: query
+      name: project_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Limitar análisis a un proyecto
+    TimeAnalysisGroupByParam:
+      in: query
+      name: group_by
+      required: false
+      schema: { type: string, enum: [day, week, month], default: day }
+      description: Resolución temporal (default day)
+    TimelineTypesParam:
+      in: query
+      name: types
+      required: false
+      schema:
+        type: string
+        description: Lista separada por comas de tipos (task_created,task_commented,time_logged)
+      description: Filtrar eventos del timeline por tipos (CSV)
+
+  responses:
+    UnauthorizedError:
+      description: No autorizado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ForbiddenError:
+      description: Acceso denegado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFoundError:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registro de usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+      responses:
+        '201': { description: Usuario registrado }
+        '400': { description: Error de validación, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login de usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200': { description: Login exitoso, content: { application/json: { schema: { $ref: '#/components/schemas/AuthTokenResponse' } } } }
+        '401': { description: Credenciales inválidas }
+  /auth/profile:
+    get:
+      tags: [Auth]
+      summary: Perfil del usuario autenticado
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Perfil, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '401': { description: No autorizado }
+
+  /users:
+    get:
+      tags: [Users]
+      summary: Listar usuarios
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [created_at, username, email, last_login]
+          description: Campo por el que ordenar (default created_at)
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Dirección de orden (default desc)
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: Búsqueda parcial por username o email
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Lista paginada }
+    post:
+      tags: [Users]
+      summary: Crear usuario (admin)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserCreate' }
+      responses:
+        '201': { description: Creado }
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Obtener usuario por id
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Usuario }
+        '404': { description: No encontrado }
+    put:
+      tags: [Users]
+      summary: Actualizar usuario
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdate' }
+      responses:
+        '200': { description: Actualizado }
+    delete:
+      tags: [Users]
+      summary: Eliminar usuario
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Eliminado }
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: Listar tareas con filtros
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/TaskStatusParam'
+        - $ref: '#/components/parameters/TaskPriorityParam'
+        - $ref: '#/components/parameters/TaskAssignedToParam'
+        - $ref: '#/components/parameters/TaskProjectIdParam'
+        - $ref: '#/components/parameters/TaskSortByParam'
+        - $ref: '#/components/parameters/TaskOrderParam'
+      responses:
+        '200': { description: Lista paginada }
+    post:
+      tags: [Tasks]
+      summary: Crear nueva tarea
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreate' }
+      responses:
+        '201': { description: Creada }
+  /tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Obtener tarea
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Tarea }
+        '404': { description: No encontrada }
+    put:
+      tags: [Tasks]
+      summary: Actualizar tarea
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskUpdate' }
+      responses:
+        '200': { description: Actualizada }
+    delete:
+      tags: [Tasks]
+      summary: Eliminar tarea
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Eliminada }
+  /tasks/{id}/comments:
+    post:
+      tags: [Tasks]
+      summary: Agregar comentario a tarea
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        '201': { description: Comentario agregado }
+
+  /reports/dashboard:
+    get:
+      tags: [Reports]
+      summary: Estadísticas generales
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Stats, content: { application/json: { schema: { $ref: '#/components/schemas/DashboardStats' } } } }
+  /reports/productivity:
+    get:
+      tags: [Reports]
+      summary: Reporte de productividad de usuarios
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+      responses:
+        '200': { description: Reporte, content: { application/json: { schema: { $ref: '#/components/schemas/ProductivityReportResponse' } } } }
+  /reports/projects:
+    get:
+      tags: [Reports]
+      summary: Reporte de proyectos
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ProjectReportStatusParam'
+        - $ref: '#/components/parameters/ProjectReportOwnerParam'
+      responses:
+        '200': { description: Reporte, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectReportResponse' } } } }
+  /reports/time-analysis:
+    get:
+      tags: [Reports]
+      summary: Análisis de tracking de tiempo
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TimeAnalysisUserParam'
+        - $ref: '#/components/parameters/TimeAnalysisProjectParam'
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+        - $ref: '#/components/parameters/TimeAnalysisGroupByParam'
+      responses:
+        '200': { description: Reporte }
+  /reports/productivity-ranking:
+    get:
+      tags: [Reports]
+      summary: Ranking básico de productividad
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+      responses:
+        '200': { description: Ranking, content: { application/json: { schema: { $ref: '#/components/schemas/ProductivityRankingResponse' } } } }
+  /reports/import-tasks:
+    post:
+      tags: [Reports]
+      summary: Importar tareas desde CSV
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                csvFile:
+                  type: string
+                  format: binary
+      responses:
+        '200': { description: Resultado importación, content: { application/json: { schema: { $ref: '#/components/schemas/ImportTasksResult' } } } }
+
+  /reports/export-tasks:
+    get:
+      tags: [Reports]
+      summary: Exportar tareas a CSV
+      description: Devuelve un archivo CSV (attachment) con hasta 50k tareas filtrables por status, priority, project_id y assigned_to.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TaskStatusParam'
+        - $ref: '#/components/parameters/TaskPriorityParam'
+        - $ref: '#/components/parameters/TaskProjectIdParam'
+        - $ref: '#/components/parameters/TaskAssignedToParam'
+      responses:
+        '200':
+          description: CSV generado
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: |
+                  Archivo CSV con columnas:
+                  id,title,description,status,priority,project_id,assigned_to,created_by,due_date,estimated_hours,actual_hours,created_at,updated_at
+        '400': { description: Parámetros inválidos }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { description: Error exportando }
+
+  /projects/{projectId}/timeline:
+    get:
+      tags: [Projects]
+      summary: Timeline de actividad del proyecto
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: projectId
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/TimelineTypesParam'
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+      responses:
+        '200': { description: Timeline, content: { application/json: { schema: { $ref: '#/components/schemas/TimelineResponse' } } } }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Listar notificaciones del usuario autenticado
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/NotificationUnreadParam'
+        - $ref: '#/components/parameters/NotificationSortByParam'
+        - $ref: '#/components/parameters/NotificationOrderParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Lista de notificaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  notifications:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        user_id: { type: string, format: uuid }
+                        type: { type: string }
+                        title: { type: string }
+                        message: { type: string }
+                        related_id: { type: string, format: uuid, nullable: true }
+                        is_read: { type: boolean }
+                        created_at: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /notifications/{id}/read:
+    put:
+      tags: [Notifications]
+      summary: Marcar notificación como leída
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Notificación marcada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  notification:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      is_read: { type: boolean }
+                      created_at: { type: string, format: date-time }
+        '404': { description: No encontrada }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }

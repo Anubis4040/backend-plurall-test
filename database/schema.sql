@@ -121,16 +121,26 @@ CREATE TABLE notifications (
 -- - Joins frecuentes
 -- - Paginación eficiente
 
--- Índices básicos (algunos faltan intencionalmente)
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
+-- Índices para usuarios
+
+
+-- Índices para tareas (si se aplican en produccion usar CONCURRENTLY)
 CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to);
+CREATE INDEX idx_users_username_trgm ON users USING GIN (username gin_trgm_ops);
+CREATE INDEX idx_users_email_trgm ON users USING GIN (email gin_trgm_ops);
 
--- Problema intencional: Faltan índices compuestos importantes
--- CREATE INDEX idx_tasks_project_status ON tasks(project_id, status);
--- CREATE INDEX idx_tasks_assigned_status_priority ON tasks(assigned_to, status, priority);
--- CREATE INDEX idx_time_entries_user_date ON time_entries(user_id, start_time);
+-- Índices para proyectos
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_projects_owner ON projects(owner_id);
+CREATE INDEX idx_tasks_project_status ON tasks(project_id, status);
+CREATE INDEX idx_projects_owner_status ON projects(owner_id, status); -- Fix: faltaba ';'
+CREATE INDEX idx_projects_created_at ON projects(created_at DESC);
+
+-- Índices para time_entries
+CREATE INDEX idx_time_entries_user_start ON time_entries (user_id, start_time DESC);
+CREATE INDEX idx_time_entries_task ON time_entries (task_id);
+CREATE INDEX idx_time_entries_start ON time_entries (start_time DESC);
 
 -- Triggers para updated_at (problema: no están implementados todos)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -144,6 +154,8 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Problema intencional: Faltan triggers para otras tablas
--- CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects...
--- CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks...
+CREATE TRIGGER update_tasks_updated_at BEFORE UPDATE ON tasks
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

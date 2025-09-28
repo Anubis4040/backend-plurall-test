@@ -1,0 +1,553 @@
+import { query, getClient } from '../../../config/database.js'
+import logger from '../../../utils/logger.js'
+import multer from 'multer'
+import csvParser from 'csv-parser'
+import fs from 'fs'
+import { buildMeta, getPaginationParams } from '../../../utils/pagination.js'
+import { stringify } from 'csv-stringify'
+
+// TODO: Crear cron job para borrar archivos subidos hace más de X tiempo
+
+const ensureUploads = () => {
+  if (!fs.existsSync('uploads')) {
+    fs.mkdirSync('uploads', { recursive: true })
+  }
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    ensureUploads()
+    cb(null, 'uploads/')
+  },
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')
+    cb(null, `${Date.now()}-${safeName}`)
+  }
+})
+
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
+    cb(null, true)
+  } else {
+    cb(new Error('Solo se permiten archivos CSV'))
+  }
+}
+
+export const upload = multer({ storage, fileFilter, limits: { fileSize: 5 * 1024 * 1024 } }) // 5MB
+
+export const getDashboardStats = async (req, res) => {
+  try {
+    const dashboardQuery = `
+      WITH
+      u AS (SELECT COUNT(*) total FROM users WHERE is_active = true),
+      p AS (SELECT COUNT(*) total FROM projects),
+      t AS (SELECT COUNT(*) total FROM tasks),
+      tc AS (SELECT COUNT(*) total FROM tasks WHERE status = 'completed')
+      SELECT
+      u.total AS total_users,
+      p.total AS total_projects,
+      t.total AS total_tasks,
+      tc.total AS completed_tasks
+      FROM u, p, t, tc;
+    `
+
+    const result = await query(dashboardQuery)
+
+    const stats = result.rows[0]
+
+    res.json({
+      success: true,
+      stats: {
+        total_users: parseInt(stats.total_users, 10),
+        total_projects: parseInt(stats.total_projects, 10),
+        total_tasks: parseInt(stats.total_tasks, 10),
+        completed_tasks: parseInt(stats.completed_tasks, 10)
+      }
+    })
+  } catch (error) {
+    logger.error('Error obteniendo estadísticas:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+export const getUserProductivityReport = async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query
+
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
+
+    const productivityQuery = `
+      WITH filtered_tasks AS (
+      SELECT *
+      FROM tasks
+      WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+        AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ),
+      agg AS (
+      SELECT
+        assigned_to AS user_id,
+        COUNT(*) AS total_tasks,
+        COUNT(*) FILTER (WHERE status='completed') AS completed_tasks,
+        COUNT(*) FILTER (WHERE status='in_progress') AS in_progress_tasks,
+        SUM(CASE WHEN status='completed' THEN actual_hours ELSE 0 END) AS total_hours_worked,
+        AVG(CASE WHEN status='completed' AND estimated_hours > 0
+          THEN actual_hours::float / estimated_hours END) AS efficiency_ratio,
+        SUM(CASE WHEN status='completed' AND estimated_hours > 0 THEN actual_hours END) AS sum_actual_eff,
+        SUM(CASE WHEN status='completed' AND estimated_hours > 0 THEN estimated_hours END) AS sum_est_eff
+      FROM filtered_tasks
+      GROUP BY assigned_to
+      )
+      SELECT
+      u.id,
+      u.username,
+      u.first_name,
+      u.last_name,
+      COALESCE(a.total_tasks,0) AS total_tasks,
+      COALESCE(a.completed_tasks,0) AS completed_tasks,
+      COALESCE(a.in_progress_tasks,0) AS in_progress_tasks,
+      a.efficiency_ratio,
+      CASE WHEN a.sum_est_eff > 0
+         THEN (a.sum_actual_eff::float / a.sum_est_eff)
+         ELSE NULL
+      END AS efficiency_ratio_weighted,
+      COALESCE(a.total_hours_worked,0) AS total_hours_worked,
+      COUNT(*) OVER() AS total_rows
+      FROM users u
+      LEFT JOIN agg a ON u.id = a.user_id
+      WHERE u.is_active = true
+      ORDER BY completed_tasks DESC, total_hours_worked DESC
+      LIMIT $3 OFFSET $4;
+    `
+    const params = [
+      start_date,
+      end_date,
+      limit,
+      offset
+    ]
+
+    const result = await query(productivityQuery, params)
+
+    const totalRows = result.rows.length ? Number(result.rows[0].total_rows) : 0
+
+    const report = result.rows.map(({ total_rows, ...rest }) => rest) // elimina la propiedad
+
+    res.json({
+      success: true,
+      report,
+      pagination: buildMeta(totalRows, page, limit)
+    })
+  } catch (error) {
+    logger.error('Error generando reporte de productividad:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+export const getProjectReport = async (req, res) => {
+  try {
+    const { status, owner_id } = req.query
+
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
+
+    const projectReportQuery = `
+      WITH base_projects AS (
+        SELECT
+          p.id,
+          p.name,
+          p.description,
+          p.status,
+          p.start_date,
+          p.end_date,
+          p.budget,
+          p.created_at,
+          p.owner_id
+        FROM projects p
+        WHERE ($1::text IS NULL OR p.status = $1)
+          AND ($2::uuid IS NULL OR p.owner_id = $2::uuid)
+      ),
+      task_stats AS (
+        SELECT
+          t.project_id,
+          COUNT(*) AS total_tasks,
+          COUNT(*) FILTER (WHERE t.status = 'completed') AS completed_tasks,
+          COUNT(*) FILTER (WHERE t.status = 'pending') AS pending_tasks,
+          COUNT(*) FILTER (WHERE t.status = 'in_progress') AS in_progress_tasks,
+          SUM(t.estimated_hours) AS total_estimated_hours,
+          SUM(t.actual_hours) AS total_actual_hours
+        FROM tasks t
+        JOIN base_projects bp ON bp.id = t.project_id
+        GROUP BY t.project_id
+      )
+      SELECT
+        bp.id,
+        bp.name,
+        bp.description,
+        bp.status,
+        bp.start_date,
+        bp.end_date,
+        bp.budget,
+        u.username AS owner_username,
+        COALESCE(ts.total_tasks, 0) AS total_tasks,
+        COALESCE(ts.completed_tasks, 0) AS completed_tasks,
+        COALESCE(ts.pending_tasks, 0) AS pending_tasks,
+        COALESCE(ts.in_progress_tasks, 0) AS in_progress_tasks,
+        CASE
+          WHEN COALESCE(ts.total_tasks, 0) > 0
+            THEN (ts.completed_tasks::numeric / ts.total_tasks) * 100
+          ELSE NULL
+        END AS completion_percentage,
+        COALESCE(ts.total_estimated_hours, 0) AS total_estimated_hours,
+        COALESCE(ts.total_actual_hours, 0) AS total_actual_hours,
+        CASE
+          WHEN COALESCE(ts.total_estimated_hours, 0) > 0
+            THEN (ts.total_actual_hours::numeric / ts.total_estimated_hours) * 100
+          ELSE NULL
+        END AS time_efficiency_percentage,
+        COUNT(*) OVER() AS total_rows
+      FROM base_projects bp
+      LEFT JOIN task_stats ts ON ts.project_id = bp.id
+      LEFT JOIN users u ON bp.owner_id = u.id
+      ORDER BY bp.created_at DESC
+      LIMIT $3 OFFSET $4;
+    `
+
+    const params = [
+      status || null,
+      owner_id || null,
+      limit,
+      offset
+    ]
+
+    const result = await query(projectReportQuery, params)
+
+    const totalRows = result.rows.length > 0 ? parseInt(result.rows[0].total_rows, 10) : 0
+
+    const projects = result.rows.map(({ total_rows, ...rest }) => rest) // elimina la propiedad
+
+    res.json({
+      success: true,
+      projects: projects.map(r => ({
+        ...r,
+        completion_percentage: r.completion_percentage !== null ? Number(r.completion_percentage) : null,
+        time_efficiency_percentage: r.time_efficiency_percentage !== null ? Number(r.time_efficiency_percentage) : null
+      })),
+      pagination: buildMeta(totalRows, page, limit),
+    })
+  } catch (error) {
+    logger.error('Error generando reporte de proyectos:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+export const getTimeTrackingAnalysis = async (req, res) => {
+  try {
+    const {
+      user_id,
+      project_id,
+      start_date,
+      end_date,
+      group_by = 'day' // day, week, month
+    } = req.query
+
+    let dateGrouping
+    switch (group_by) {
+      case 'week':
+        dateGrouping = "DATE_TRUNC('week', te.start_time)"
+        break
+      case 'month':
+        dateGrouping = "DATE_TRUNC('month', te.start_time)"
+        break
+      default:
+        dateGrouping = "DATE_TRUNC('day', te.start_time)"
+    }
+
+    let whereClause = 'WHERE 1=1'
+    const params = []
+    let paramCount = 0
+
+    if (user_id) {
+      paramCount++
+      whereClause += ` AND te.user_id = $${paramCount}`
+      params.push(user_id)
+    }
+
+    if (project_id) {
+      paramCount++
+      whereClause += ` AND t.project_id = $${paramCount}`
+      params.push(project_id)
+    }
+
+    if (start_date) {
+      paramCount++
+      whereClause += ` AND te.start_time >= $${paramCount}`
+      params.push(start_date)
+    }
+
+    if (end_date) {
+      paramCount++
+      whereClause += ` AND te.start_time <= $${paramCount}`
+      params.push(end_date)
+    }
+
+    const timeAnalysisQuery = `
+      SELECT
+        ${dateGrouping} as period,
+        COUNT(DISTINCT te.user_id) as active_users,
+        COUNT(te.id) as total_entries,
+        SUM(te.hours_logged) as total_hours,
+        AVG(te.hours_logged) as avg_hours_per_entry,
+        COUNT(DISTINCT t.id) as tasks_worked_on,
+        COUNT(DISTINCT t.project_id) as projects_involved
+      FROM time_entries te
+      JOIN tasks t ON te.task_id = t.id
+      ${whereClause}
+      GROUP BY ${dateGrouping}
+      ORDER BY period DESC
+    `
+
+    const result = await query(timeAnalysisQuery, params)
+
+    res.json({
+      success: true,
+      analysis: result.rows,
+      group_by: group_by
+    })
+  } catch (error) {
+    logger.error('Error en análisis de tiempo:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+export const importTasksFromCSV = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Archivo CSV requerido' })
+    }
+
+    const results = []
+    const errors = []
+
+    fs.createReadStream(req.file.path)
+      .pipe(csvParser())
+      .on('data', (data) => {
+        results.push(data)
+      })
+      .on('end', async () => {
+        try {
+          // console.log(results, 'results');
+          for (const row of results) {
+            try {
+              const insertTaskQuery = `
+                INSERT INTO tasks (title, description, status, priority, project_id, assigned_to, created_by, estimated_hours)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+              `
+
+              await query(insertTaskQuery, [
+                row.title || 'Tarea sin título',
+                row.description || '',
+                row.status || 'pending',
+                row.priority || 'medium',
+                row.project_id || null,
+                row.assigned_to || req.user.userId,
+                req.user.userId,
+                parseInt(row.estimated_hours) || null
+              ])
+            } catch (error) {
+              errors.push({
+                row: row,
+                error: error.message
+              })
+            }
+          }
+
+          res.json({
+            success: true,
+            message: `Procesadas ${results.length} filas`,
+            imported: results.length - errors.length,
+            errors: errors.length,
+            error_details: errors
+          })
+        } catch (error) {
+          logger.error('Error procesando CSV:', error.message)
+          res.status(500).json({ error: 'Error procesando archivo' })
+        }
+      })
+      .on('error', (error) => {
+        logger.error('Error leyendo CSV:', error.message)
+        res.status(500).json({ error: 'Error leyendo archivo CSV' })
+      })
+
+  } catch (error) {
+    logger.error('Error en importación:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
+// Exportación síncrona de tareas a CSV (variante 3A)
+export const exportTasksToCSV = async (req, res) => {
+  try {
+
+    // Filtros opcionales similares a getTasks
+    const { status, priority, project_id, assigned_to } = req.query
+    const filters = []
+    const params = []
+    if (status) { params.push(status); filters.push(`t.status = $${params.length}`) }
+    if (priority) { params.push(priority); filters.push(`t.priority = $${params.length}`) }
+    if (project_id) { params.push(project_id); filters.push(`t.project_id = $${params.length}`) }
+    if (assigned_to) { params.push(assigned_to); filters.push(`t.assigned_to = $${params.length}`) }
+
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+
+    const selectQuery = `
+      SELECT
+        t.id,
+        t.title,
+        t.description,
+        t.status,
+        t.priority,
+        t.project_id,
+        t.assigned_to,
+        t.created_by,
+        t.due_date,
+        t.estimated_hours,
+        t.actual_hours,
+        t.created_at,
+        t.updated_at
+      FROM tasks t
+      ${where}
+      ORDER BY t.created_at DESC
+      LIMIT 50000 -- Hard limit para evitar memory blow-up en export síncrona
+    `
+
+    const result = await query(selectQuery, params)
+    const rows = result.rows
+
+    // Columnas
+    const columns = [
+      'id','title','description','status','priority','project_id','assigned_to','created_by','due_date','estimated_hours','actual_hours','created_at','updated_at'
+    ]
+
+    const fileName = `tasks_export_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.setHeader('Cache-Control', 'no-store')
+
+    res.write('\uFEFF')
+
+    // Preparamos datos normalizando fechas / nulls
+    const normalized = rows.map(r => ({
+      ...r,
+      due_date: r.due_date ? new Date(r.due_date).toISOString() : '',
+      created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
+      updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : '',
+      estimated_hours: r.estimated_hours ?? '',
+      actual_hours: r.actual_hours ?? ''
+    }))
+
+    stringify(normalized, {
+      header: true,
+      columns,
+      quoted_match: /[\",\n]/, // Quote si contiene comilla, coma o salto
+    }, (err, output) => {
+      if (err) {
+        logger.appError('Error generando CSV con csv-stringify', err)
+        if (!res.headersSent) return res.status(500).json({ error: 'Error exportando tareas' })
+        return
+      }
+      res.end(output)
+      logger.info('Exportación de tareas generada', { rows: rows.length, filters: { status, priority, project_id, assigned_to } })
+    })
+  } catch (error) {
+    logger.appError('Error exportando tareas a CSV', error)
+    res.status(500).json({ error: 'Error exportando tareas' })
+  }
+}
+
+export const getUserProductivityRanking = async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
+
+    const rankingQuery = `
+      WITH filtered_tasks AS (
+        SELECT *
+        FROM tasks
+        WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+          AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ),
+      agg AS (
+        SELECT
+          assigned_to AS user_id,
+          COUNT(*) AS total_tasks,
+          COUNT(*) FILTER (WHERE status='completed') AS completed_tasks,
+          SUM(CASE WHEN status='completed' THEN actual_hours ELSE 0 END) AS hours_worked,
+          AVG(CASE WHEN status='completed' AND estimated_hours > 0
+              THEN actual_hours::float / estimated_hours END) AS efficiency_ratio
+        FROM filtered_tasks
+        GROUP BY assigned_to
+      ),
+      joined AS (
+        SELECT
+          u.id,
+          u.username,
+          COALESCE(a.total_tasks,0) AS total_tasks,
+          COALESCE(a.completed_tasks,0) AS completed_tasks,
+            CASE WHEN COALESCE(a.total_tasks,0) > 0
+              THEN (COALESCE(a.completed_tasks,0)::float / a.total_tasks)
+              ELSE NULL END AS completion_rate,
+          COALESCE(a.hours_worked,0) AS hours_worked,
+          a.efficiency_ratio
+        FROM users u
+        LEFT JOIN agg a ON u.id = a.user_id
+        WHERE u.is_active = true
+      ),
+      ranked AS (
+        SELECT *,
+          RANK() OVER (ORDER BY completed_tasks DESC, efficiency_ratio DESC NULLS LAST) AS rank,
+          COUNT(*) OVER() AS total_rows
+        FROM joined
+      )
+      SELECT *
+      FROM ranked
+      ORDER BY rank
+      LIMIT $3 OFFSET $4;
+    `
+
+    const params = [
+      start_date || null,
+      end_date || null,
+      limit,
+      offset
+    ]
+
+    const result = await query(rankingQuery, params)
+
+    const totalRows = result.rows.length ? Number(result.rows[0].total_rows) : 0
+    const ranking = result.rows.map(({ total_rows, ...rest }) => ({
+      ...rest,
+      completed_tasks: Number(rest.completed_tasks),
+      total_tasks: Number(rest.total_tasks),
+      hours_worked: Number(rest.hours_worked),
+      // efficiency_ratio puede ser null
+      efficiency_ratio: rest.efficiency_ratio !== null ? Number(rest.efficiency_ratio) : null,
+      completion_rate: rest.completion_rate !== null ? Number(rest.completion_rate) : null,
+      rank: Number(rest.rank)
+    }))
+
+    // TODO: Mejorar paginacion para que al enviar page > totalPages no refleje total_pages como 0
+
+    res.json({
+      success: true,
+      ranking,
+      pagination: buildMeta(totalRows, page, limit),
+      // meta: {
+      //   start_date: start_date || null,
+      //   end_date: end_date || null,
+      //   order: ['completed_tasks DESC', 'efficiency_ratio DESC NULLS LAST']
+      // }
+    })
+  } catch (error) {
+    logger.error('Error generando ranking de productividad:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
