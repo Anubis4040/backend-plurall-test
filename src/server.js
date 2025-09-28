@@ -24,12 +24,14 @@ app.use('/api', rateLimiter)
 
 connectDB()
 
-// TODO: Optomizar rutas para que no todas usen /api
+const apiRouter = express.Router()
 
-app.use('/api/auth', authRoutes)
-app.use('/api/users', userRoutes)
-app.use('/api/tasks', taskRoutes)
-app.use('/api/reports', reportRoutes)
+apiRouter.use('/auth', authRoutes)
+apiRouter.use('/users', userRoutes)
+apiRouter.use('/tasks', taskRoutes)
+apiRouter.use('/reports', reportRoutes)
+
+app.use('/api', apiRouter)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() })
