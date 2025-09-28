@@ -8,6 +8,7 @@ import userRoutes from './modules/user/routes/user-routes.js'
 import taskRoutes from './modules/task/routes/tasks.js'
 import reportRoutes from './modules/reports/routes/reports.js'
 import projectRoutes from './modules/project/routes/project-routes.js'
+import notificationRoutes from './modules/notifaction/routes/notifications.js'
 import { errorHandler } from './modules/shared/middlewares/errorHandler.js'
 import { rateLimiter } from './modules/shared/middlewares/rateLimiter.js'
 import { PORT, NODE_ENV, DB_HOST } from './config/env.js'
@@ -36,6 +37,7 @@ apiRouter.use('/users', userRoutes)
 apiRouter.use('/tasks', taskRoutes)
 apiRouter.use('/reports', reportRoutes)
 apiRouter.use('/projects', projectRoutes)
+apiRouter.use('/notifications', notificationRoutes)
 
 app.use('/api', apiRouter)
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
