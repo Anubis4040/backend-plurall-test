@@ -297,6 +297,101 @@ components:
       name: end_date
       schema: { type: string, format: date-time }
       required: false
+    TaskStatusParam:
+      in: query
+      name: status
+      required: false
+      schema: { type: string, enum: [pending, in_progress, completed, cancelled] }
+      description: Filtrar por status exacto de la tarea
+    TaskPriorityParam:
+      in: query
+      name: priority
+      required: false
+      schema: { type: string, enum: [low, medium, high, urgent] }
+      description: Filtrar por prioridad
+    TaskAssignedToParam:
+      in: query
+      name: assigned_to
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtrar por usuario asignado
+    TaskProjectIdParam:
+      in: query
+      name: project_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtrar por proyecto
+    TaskSortByParam:
+      in: query
+      name: sort_by
+      required: false
+      schema:
+        type: string
+        enum: [created_at, due_date, priority, estimated_hours, actual_hours]
+      description: Campo para ordenar (default created_at)
+    TaskOrderParam:
+      in: query
+      name: order
+      required: false
+      schema: { type: string, enum: [asc, desc] }
+      description: Dirección de orden (default desc)
+    NotificationUnreadParam:
+      in: query
+      name: unread
+      required: false
+      schema: { type: boolean }
+      description: Si se incluye (unread=true) devuelve solo no leídas
+    NotificationSortByParam:
+      in: query
+      name: sort_by
+      required: false
+      schema: { type: string, enum: [created_at, title, is_read] }
+      description: Campo para ordenar notificaciones (default created_at)
+    NotificationOrderParam:
+      in: query
+      name: order
+      required: false
+      schema: { type: string, enum: [asc, desc] }
+      description: Dirección de orden (default desc)
+    ProjectReportStatusParam:
+      in: query
+      name: status
+      required: false
+      schema: { type: string, enum: [active, completed, archived, cancelled] }
+      description: Filtrar reportes de proyecto por status
+    ProjectReportOwnerParam:
+      in: query
+      name: owner_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtrar proyectos por owner
+    TimeAnalysisUserParam:
+      in: query
+      name: user_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Limitar análisis a un usuario
+    TimeAnalysisProjectParam:
+      in: query
+      name: project_id
+      required: false
+      schema: { type: string, format: uuid }
+      description: Limitar análisis a un proyecto
+    TimeAnalysisGroupByParam:
+      in: query
+      name: group_by
+      required: false
+      schema: { type: string, enum: [day, week, month], default: day }
+      description: Resolución temporal (default day)
+    TimelineTypesParam:
+      in: query
+      name: types
+      required: false
+      schema:
+        type: string
+        description: Lista separada por comas de tipos (task_created,task_commented,time_logged)
+      description: Filtrar eventos del timeline por tipos (CSV)
+
   responses:
     UnauthorizedError:
       description: No autorizado
@@ -357,6 +452,31 @@ paths:
     get:
       tags: [Users]
       summary: Listar usuarios
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [created_at, username, email, last_login]
+          description: Campo por el que ordenar (default created_at)
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+          description: Dirección de orden (default desc)
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: Búsqueda parcial por username o email
       security: [{ bearerAuth: [] }]
       responses:
         '200': { description: Lista paginada }
@@ -420,6 +540,12 @@ paths:
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/TaskStatusParam'
+        - $ref: '#/components/parameters/TaskPriorityParam'
+        - $ref: '#/components/parameters/TaskAssignedToParam'
+        - $ref: '#/components/parameters/TaskProjectIdParam'
+        - $ref: '#/components/parameters/TaskSortByParam'
+        - $ref: '#/components/parameters/TaskOrderParam'
       responses:
         '200': { description: Lista paginada }
     post:
@@ -514,6 +640,11 @@ paths:
       tags: [Reports]
       summary: Reporte de proyectos
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/ProjectReportStatusParam'
+        - $ref: '#/components/parameters/ProjectReportOwnerParam'
       responses:
         '200': { description: Reporte, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectReportResponse' } } } }
   /reports/time-analysis:
@@ -521,6 +652,12 @@ paths:
       tags: [Reports]
       summary: Análisis de tracking de tiempo
       security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/TimeAnalysisUserParam'
+        - $ref: '#/components/parameters/TimeAnalysisProjectParam'
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+        - $ref: '#/components/parameters/TimeAnalysisGroupByParam'
       responses:
         '200': { description: Reporte }
   /reports/productivity-ranking:
@@ -560,22 +697,10 @@ paths:
       description: Devuelve un archivo CSV (attachment) con hasta 50k tareas filtrables por status, priority, project_id y assigned_to.
       security: [{ bearerAuth: [] }]
       parameters:
-        - in: query
-          name: status
-          required: false
-          schema: { type: string }
-        - in: query
-          name: priority
-          required: false
-          schema: { type: string }
-        - in: query
-          name: project_id
-          required: false
-          schema: { type: string, format: uuid }
-        - in: query
-          name: assigned_to
-          required: false
-          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/TaskStatusParam'
+        - $ref: '#/components/parameters/TaskPriorityParam'
+        - $ref: '#/components/parameters/TaskProjectIdParam'
+        - $ref: '#/components/parameters/TaskAssignedToParam'
       responses:
         '200':
           description: CSV generado
@@ -602,12 +727,7 @@ paths:
           schema: { type: string, format: uuid }
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
-        - name: types
-          in: query
-          required: false
-          schema:
-            type: string
-            description: Lista separada por comas de tipos (task_created,task_commented,time_logged)
+        - $ref: '#/components/parameters/TimelineTypesParam'
         - $ref: '#/components/parameters/StartDateParam'
         - $ref: '#/components/parameters/EndDateParam'
       responses:
@@ -619,10 +739,9 @@ paths:
       summary: Listar notificaciones del usuario autenticado
       security: [{ bearerAuth: [] }]
       parameters:
-        - in: query
-          name: unread
-          required: false
-          schema: { type: boolean }
+        - $ref: '#/components/parameters/NotificationUnreadParam'
+        - $ref: '#/components/parameters/NotificationSortByParam'
+        - $ref: '#/components/parameters/NotificationOrderParam'
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:
