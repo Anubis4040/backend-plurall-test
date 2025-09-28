@@ -1,5 +1,6 @@
 import { query } from '../../../config/database.js'
 import logger from '../../../utils/logger.js'
+import bus from '../../../utils/eventBus.js'
 import { getPaginationParams, buildSortClause, buildMeta, paginateQuery } from '../../../utils/pagination.js'
 
 export const createTask = async (req, res) => {
@@ -26,6 +27,13 @@ export const createTask = async (req, res) => {
 
     const task = result.rows[0]
     logger.info(`Nueva tarea creada: ${title}`)
+
+    // Emitir evento de dominio (best-effort: no bloquea respuesta si falla)
+    try {
+      bus.emit('task.created', { task, actor: { userId: created_by } })
+    } catch (emitErr) {
+      logger.appError('Fallo emitiendo evento task.created', emitErr, { taskId: task.id })
+    }
 
     res.status(201).json({
       success: true,
@@ -185,9 +193,28 @@ export const updateTask = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tarea no encontrada' })
     }
+    const updatedTask = result.rows[0]
+    logger.info(`Tarea actualizada: ${updatedTask.title}`)
 
-    logger.info(`Tarea actualizada: ${result.rows[0].title}`)
-    res.json({ success: true, message: 'Tarea actualizada exitosamente', task: result.rows[0] })
+    // Detectar cambios relevantes para eventos: status y assigned_to
+    try {
+      const changedFields = entries.map(([k]) => k)
+      if (changedFields.includes('status')) {
+        // Necesitamos status anterior -> realizar una consulta previa mínima
+        // (Si se quisiera exacto, deberíamos obtener antes de actualizar; aquí simplificamos indicando oldStatus desconocido si no se tenía)
+        const oldStatus = 'unknown' // Mejorable: traer antes el registro
+        const newStatus = updatedTask.status
+        bus.emit('task.status.changed', { task: updatedTask, oldStatus, newStatus, actor: { userId: req.user.userId } })
+      }
+      if (changedFields.includes('assigned_to')) {
+        const newAssignee = updatedTask.assigned_to
+        bus.emit('task.assigned', { task: updatedTask, previousAssignee: 'unknown', newAssignee, actor: { userId: req.user.userId } })
+      }
+    } catch (emitErr) {
+      logger.appError('Fallo emitiendo eventos de actualización de tarea', emitErr, { taskId: updatedTask.id })
+    }
+
+    res.json({ success: true, message: 'Tarea actualizada exitosamente', task: updatedTask })
   } catch (error) {
     logger.error('Error actualizando tarea:', error.message)
     res.status(500).json({ error: 'Error interno del servidor' })
@@ -230,11 +257,19 @@ export const addComment = async (req, res) => {
     `
 
     const result = await query(insertCommentQuery, [id, user_id, content])
+    const comment = result.rows[0]
+
+    // Emitir evento de comentario agregado
+    try {
+      bus.emit('task.comment.added', { taskId: id, comment, actor: { userId: user_id } })
+    } catch (emitErr) {
+      logger.appError('Fallo emitiendo evento task.comment.added', emitErr, { taskId: id })
+    }
 
     res.json({
       success: true,
       message: 'Comentario agregado exitosamente',
-      comment: result.rows[0]
+      comment
     })
   } catch (error) {
     logger.error('Error agregando comentario:', error.message)
