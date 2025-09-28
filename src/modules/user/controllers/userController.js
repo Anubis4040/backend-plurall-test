@@ -1,35 +1,44 @@
 import { query } from '../../../config/database.js'
 import logger from '../../../utils/logger.js'
 import bcrypt from 'bcryptjs'
+import { getPaginationParams, buildSortClause, buildMeta, paginateQuery } from '../../../utils/pagination.js'
 
 export const listUsers = async (req, res) => {
   try {
-    const { page = 1, limit = 20, search } = req.query
-    const offset = (Number(page) - 1) * Number(limit)
+    const { search, sort_by, order } = req.query
 
-    let baseQuery = 'SELECT id, username, email, role, first_name, last_name, avatar_url, is_active, email_verified, last_login, created_at, updated_at FROM users'
+    // Parametros de paginacion
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
+
+    // Columnas permitidas para ordenar
+    const allowedSort = ['created_at', 'username', 'email', 'last_login']
+    const sortClause = buildSortClause(sort_by, allowedSort, order, 'created_at')
+
+    // Construcción de cláusulas dinámicas
+    const filters = []
     const params = []
 
     if (search) {
       params.push(`%${search}%`)
-      baseQuery += ` WHERE username ILIKE $${params.length} OR email ILIKE $${params.length}`
+      params.push(`%${search}%`)
+      filters.push(`(username ILIKE $${params.length - 1} OR email ILIKE $${params.length})`)
     }
-    const countQuery = baseQuery.replace(/SELECT[^F]*FROM/, 'SELECT COUNT(*) AS total FROM')
-    baseQuery += ` ORDER BY created_at DESC LIMIT ${Number(limit)} OFFSET ${offset}`
 
-    const [rowsResult, countResult] = await Promise.all([
-      query(baseQuery, params),
-      query(countQuery, params)
-    ])
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+
+    const baseSelect = `SELECT id, username, email, role, first_name, last_name, avatar_url, is_active, email_verified, last_login, created_at, updated_at FROM users ${where}`
+
+    const { rows, total } = await paginateQuery({
+      queryFn: query,
+      baseSelect,
+      params,
+      options: { sortClause, limit, offset }
+    })
 
     res.json({
       success: true,
-      data: rowsResult.rows,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total: Number(countResult.rows[0].total)
-      }
+      data: rows,
+      pagination: buildMeta(total, page, limit)
     })
   } catch (error) {
     logger.error('Error listUsers:', error.message)

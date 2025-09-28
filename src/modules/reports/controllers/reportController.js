@@ -3,6 +3,7 @@ import logger from '../../../utils/logger.js'
 import multer from 'multer'
 import csvParser from 'csv-parser'
 import fs from 'fs'
+import { buildMeta, getPaginationParams } from '../../../utils/pagination.js'
 
 // TODO: Crear cron job para borrar archivos subidos hace más de X tiempo
 
@@ -70,13 +71,12 @@ export const getDashboardStats = async (req, res) => {
 
 export const getUserProductivityReport = async (req, res) => {
   try {
-    const { start_date, end_date, limit = 10, offset = 0 } = req.query
+    const { start_date, end_date} = req.query
 
-    // Parse and validate query parameters
     const startDateOrNull = start_date ? new Date(start_date) : null
     const endDateOrNull = end_date ? new Date(end_date) : null
-    const limitParsed = parseInt(limit, 10) || 10
-    const offsetParsed = parseInt(offset, 10) || 0
+
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
 
     const productivityQuery = `
       WITH filtered_tasks AS (
@@ -112,7 +112,8 @@ export const getUserProductivityReport = async (req, res) => {
          THEN (a.sum_actual_eff::float / a.sum_est_eff)
          ELSE NULL
       END AS efficiency_ratio_weighted,
-      COALESCE(a.total_hours_worked,0) AS total_hours_worked
+      COALESCE(a.total_hours_worked,0) AS total_hours_worked,
+      COUNT(*) OVER() AS total_rows
       FROM users u
       LEFT JOIN agg a ON u.id = a.user_id
       WHERE u.is_active = true
@@ -122,15 +123,20 @@ export const getUserProductivityReport = async (req, res) => {
     const params = [
       startDateOrNull,
       endDateOrNull,
-      limitParsed,
-      offsetParsed
+      limit,
+      offset
     ]
 
     const result = await query(productivityQuery, params)
 
+    const totalRows = result.rows.length ? Number(result.rows[0].total_rows) : 0
+
+    const report = result.rows.map(({ total_rows, ...rest }) => rest) // elimina la propiedad
+
     res.json({
       success: true,
-      report: result.rows
+      report,
+      pagination: buildMeta(totalRows, page, limit)
     })
   } catch (error) {
     logger.error('Error generando reporte de productividad:', error.message)
@@ -140,7 +146,7 @@ export const getUserProductivityReport = async (req, res) => {
 
 export const getProjectReport = async (req, res) => {
   try {
-    const { status, owner_id, limit = 50, offset = 0 } = req.query
+    const { status, owner_id } = req.query
 
     // Validación / saneo de parámetros
     const allowedStatuses = new Set(['active', 'completed', 'archived', 'cancelled'])
@@ -157,8 +163,7 @@ export const getProjectReport = async (req, res) => {
       ownerIdParam = owner_id.trim()
     }
 
-    const limitParsed = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500) // 1 .. 500
-    const offsetParsed = Math.max(parseInt(offset, 10) || 0, 0)
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
 
     const projectReportQuery = `
       WITH base_projects AS (
@@ -225,26 +230,24 @@ export const getProjectReport = async (req, res) => {
     const params = [
       statusParam,
       ownerIdParam,
-      limitParsed,
-      offsetParsed
+      limit,
+      offset
     ]
 
     const result = await query(projectReportQuery, params)
 
     const totalRows = result.rows.length > 0 ? parseInt(result.rows[0].total_rows, 10) : 0
 
+    const projects = result.rows.map(({ total_rows, ...rest }) => rest) // elimina la propiedad
+
     res.json({
       success: true,
-      projects: result.rows.map(r => ({
+      projects: projects.map(r => ({
         ...r,
         completion_percentage: r.completion_percentage !== null ? Number(r.completion_percentage) : null,
         time_efficiency_percentage: r.time_efficiency_percentage !== null ? Number(r.time_efficiency_percentage) : null
       })),
-      pagination: {
-        limit: limitParsed,
-        offset: offsetParsed,
-        total: totalRows
-      },
+      pagination: buildMeta(totalRows, page, limit),
     })
   } catch (error) {
     logger.error('Error generando reporte de proyectos:', error.message)

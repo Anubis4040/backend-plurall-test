@@ -1,5 +1,6 @@
 import { query } from '../../../config/database.js'
 import logger from '../../../utils/logger.js'
+import { getPaginationParams, buildSortClause, buildMeta, paginateQuery } from '../../../utils/pagination.js'
 
 export const createTask = async (req, res) => {
   try {
@@ -43,48 +44,36 @@ export const createTask = async (req, res) => {
 
 export const getTasks = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      status,
-      priority,
-      assigned_to,
-      project_id,
-      sort_by = 'created_at',
-      order = 'DESC'
-    } = req.query
+    const { status, priority, assigned_to, project_id, sort_by, order } = req.query
 
-    const offset = (page - 1) * limit
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 10, maxLimit: 100 })
 
-    let whereClause = 'WHERE 1=1'
-    const queryParams = []
-    let paramCount = 0
+    const allowedSort = ['created_at', 'due_date', 'priority', 'estimated_hours', 'actual_hours']
+    const sortClause = buildSortClause(sort_by, allowedSort, order, 'created_at')
+
+    const filters = []
+    const params = []
 
     if (status) {
-      paramCount++
-      whereClause += ` AND t.status = $${paramCount}`
-      queryParams.push(status)
+      params.push(status)
+      filters.push(`t.status = $${params.length}`)
     }
-
     if (priority) {
-      paramCount++
-      whereClause += ` AND t.priority = $${paramCount}`
-      queryParams.push(priority)
+      params.push(priority)
+      filters.push(`t.priority = $${params.length}`)
     }
-
     if (assigned_to) {
-      paramCount++
-      whereClause += ` AND t.assigned_to = $${paramCount}`
-      queryParams.push(assigned_to)
+      params.push(assigned_to)
+      filters.push(`t.assigned_to = $${params.length}`)
     }
-
     if (project_id) {
-      paramCount++
-      whereClause += ` AND t.project_id = $${paramCount}`
-      queryParams.push(project_id)
+      params.push(project_id)
+      filters.push(`t.project_id = $${params.length}`)
     }
 
-    const tasksQuery = `
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+
+    const baseSelect = `
       SELECT
         t.*,
         u1.username as assigned_username,
@@ -96,23 +85,19 @@ export const getTasks = async (req, res) => {
       LEFT JOIN users u1 ON t.assigned_to = u1.id
       LEFT JOIN users u2 ON t.created_by = u2.id
       LEFT JOIN projects p ON t.project_id = p.id
-      ${whereClause}
-      ORDER BY t.${sort_by} ${order}
-      LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
-    `
+      ${where}`
 
-    queryParams.push(limit, offset)
-
-    const result = await query(tasksQuery, queryParams)
+    const { rows, total } = await paginateQuery({
+      queryFn: query,
+      baseSelect,
+      params,
+      options: { sortClause, limit, offset }
+    })
 
     res.json({
       success: true,
-      tasks: result.rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: undefined
-      }
+      tasks: rows,
+      pagination: buildMeta(total, page, limit)
     })
   } catch (error) {
     logger.error('Error obteniendo tareas:', error.message)
