@@ -4,6 +4,7 @@ import multer from 'multer'
 import csvParser from 'csv-parser'
 import fs from 'fs'
 import { buildMeta, getPaginationParams } from '../../../utils/pagination.js'
+import { stringify } from 'csv-stringify'
 
 // TODO: Crear cron job para borrar archivos subidos hace más de X tiempo
 
@@ -381,12 +382,91 @@ export const importTasksFromCSV = async (req, res) => {
   }
 }
 
+// Exportación síncrona de tareas a CSV (variante 3A)
+export const exportTasksToCSV = async (req, res) => {
+  try {
+
+    // Filtros opcionales similares a getTasks
+    const { status, priority, project_id, assigned_to } = req.query
+    const filters = []
+    const params = []
+    if (status) { params.push(status); filters.push(`t.status = $${params.length}`) }
+    if (priority) { params.push(priority); filters.push(`t.priority = $${params.length}`) }
+    if (project_id) { params.push(project_id); filters.push(`t.project_id = $${params.length}`) }
+    if (assigned_to) { params.push(assigned_to); filters.push(`t.assigned_to = $${params.length}`) }
+
+    const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+
+    const selectQuery = `
+      SELECT
+        t.id,
+        t.title,
+        t.description,
+        t.status,
+        t.priority,
+        t.project_id,
+        t.assigned_to,
+        t.created_by,
+        t.due_date,
+        t.estimated_hours,
+        t.actual_hours,
+        t.created_at,
+        t.updated_at
+      FROM tasks t
+      ${where}
+      ORDER BY t.created_at DESC
+      LIMIT 50000 -- Hard limit para evitar memory blow-up en export síncrona
+    `
+
+    const result = await query(selectQuery, params)
+    const rows = result.rows
+
+    // Columnas
+    const columns = [
+      'id','title','description','status','priority','project_id','assigned_to','created_by','due_date','estimated_hours','actual_hours','created_at','updated_at'
+    ]
+
+    const fileName = `tasks_export_${new Date().toISOString().replace(/[:.]/g,'-')}.csv`
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+    res.setHeader('Cache-Control', 'no-store')
+
+    res.write('\uFEFF')
+
+    // Preparamos datos normalizando fechas / nulls
+    const normalized = rows.map(r => ({
+      ...r,
+      due_date: r.due_date ? new Date(r.due_date).toISOString() : '',
+      created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
+      updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : '',
+      estimated_hours: r.estimated_hours ?? '',
+      actual_hours: r.actual_hours ?? ''
+    }))
+
+    stringify(normalized, {
+      header: true,
+      columns,
+      quoted_match: /[\",\n]/, // Quote si contiene comilla, coma o salto
+    }, (err, output) => {
+      if (err) {
+        logger.appError('Error generando CSV con csv-stringify', err)
+        if (!res.headersSent) return res.status(500).json({ error: 'Error exportando tareas' })
+        return
+      }
+      res.end(output)
+      logger.info('Exportación de tareas generada', { rows: rows.length, filters: { status, priority, project_id, assigned_to } })
+    })
+  } catch (error) {
+    logger.appError('Error exportando tareas a CSV', error)
+    res.status(500).json({ error: 'Error exportando tareas' })
+  }
+}
+
 export const getUserProductivityRanking = async (req, res) => {
   try {
     const { start_date, end_date } = req.query
     const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
 
-    // NOTA: usamos CTE para filtrar por rango temporal y luego agregamos por usuario
     const rankingQuery = `
       WITH filtered_tasks AS (
         SELECT *

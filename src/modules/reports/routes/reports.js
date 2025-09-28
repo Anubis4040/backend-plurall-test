@@ -6,6 +6,7 @@ import {
   getTimeTrackingAnalysis,
   importTasksFromCSV,
   getUserProductivityRanking,
+  exportTasksToCSV,
   upload
 } from '../controllers/reportController.js'
 import { authenticateToken, authorizeRoles } from '../../auth/middlewares/auth.js'
@@ -28,6 +29,9 @@ router.get('/time-analysis', authenticateToken, validate({ query: timeAnalysisQu
 router.get('/productivity-ranking', authenticateToken, authorizeRoles('manager', 'admin'), validate({ query: productivityRankingQuerySchema }), getUserProductivityRanking)
 
 router.post('/import-tasks', authenticateToken, upload.single('csvFile'), importTasksFromCSV)
+
+// Export síncrono de tareas a CSV (variante 3A)
+router.get('/export-tasks', authenticateToken, exportTasksToCSV)
 
 
 export default router
