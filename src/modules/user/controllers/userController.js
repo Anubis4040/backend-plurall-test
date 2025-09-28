@@ -64,10 +64,6 @@ export const createUser = async (req, res) => {
   try {
     const { username, email, password, role, first_name, last_name } = req.body
 
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'username, email y password son requeridos' })
-    }
-
     const saltRounds = 8
     const passwordHash = await bcrypt.hash(password, saltRounds)
 

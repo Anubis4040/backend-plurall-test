@@ -7,10 +7,6 @@ export const createTask = async (req, res) => {
     const { title, description, project_id, assigned_to, priority, due_date, estimated_hours } = req.body
     const created_by = req.user.userId
 
-    if (!title) {
-      return res.status(400).json({ error: 'Título es requerido' })
-    }
-
     const insertQuery = `
       INSERT INTO tasks (title, description, project_id, assigned_to, created_by, priority, due_date, estimated_hours)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -162,13 +158,7 @@ export const getTaskById = async (req, res) => {
 export const updateTask = async (req, res) => {
   try {
     const { id } = req.params
-    // Campos permitidos para actualización
-    const allowed = ['title','description','status','priority','assigned_to','due_date','estimated_hours','actual_hours']
-    const entries = Object.entries(req.body).filter(([k]) => allowed.includes(k))
-
-    if (entries.length === 0) {
-      return res.status(400).json({ error: 'No hay campos válidos para actualizar' })
-    }
+    const entries = Object.entries(req.body)
 
     // Construcción dinámica de SET
     const setFragments = entries.map(([k], idx) => `${k} = $${idx + 1}`)
@@ -232,10 +222,6 @@ export const addComment = async (req, res) => {
     const { id } = req.params
     const { content } = req.body
     const user_id = req.user.userId
-
-    if (!content) {
-      return res.status(400).json({ error: 'Contenido del comentario requerido' })
-    }
 
     const insertCommentQuery = `
       INSERT INTO task_comments (task_id, user_id, content)

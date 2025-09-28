@@ -7,14 +7,6 @@ export const register = async (req, res) => {
   try {
     const { username, email, password, first_name, last_name } = req.body
 
-    // TODO: Refactorizar las validaciones usando Zod
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Faltan campos requeridos' })
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Contraseña debe tener al menos 6 caracteres' })
-    }
 
     const existingUserQuery = 'SELECT id FROM users WHERE email = $1 OR username = $2'
     const existingUser = await query(existingUserQuery, [email, username])
@@ -54,9 +46,6 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email y contraseña requeridos' })
-    }
 
     const userQuery = `
       SELECT id, username, email, password_hash, role, first_name, last_name, is_active

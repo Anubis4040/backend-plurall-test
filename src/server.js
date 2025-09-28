@@ -41,5 +41,5 @@ app.use(errorHandler)
 
 app.listen(PORT, () => {
   logger.info(`Servidor corriendo en puerto ${PORT}`)
-  console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`)
+  // console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`)
 })

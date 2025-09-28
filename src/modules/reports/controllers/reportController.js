@@ -71,10 +71,7 @@ export const getDashboardStats = async (req, res) => {
 
 export const getUserProductivityReport = async (req, res) => {
   try {
-    const { start_date, end_date} = req.query
-
-    const startDateOrNull = start_date ? new Date(start_date) : null
-    const endDateOrNull = end_date ? new Date(end_date) : null
+    const { start_date, end_date } = req.query
 
     const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
 
@@ -121,8 +118,8 @@ export const getUserProductivityReport = async (req, res) => {
       LIMIT $3 OFFSET $4;
     `
     const params = [
-      startDateOrNull,
-      endDateOrNull,
+      start_date,
+      end_date,
       limit,
       offset
     ]
@@ -147,21 +144,6 @@ export const getUserProductivityReport = async (req, res) => {
 export const getProjectReport = async (req, res) => {
   try {
     const { status, owner_id } = req.query
-
-    // Validación / saneo de parámetros
-    const allowedStatuses = new Set(['active', 'completed', 'archived', 'cancelled'])
-    const statusParam = (typeof status === 'string' && status.trim() !== '' && allowedStatuses.has(status.trim()))
-      ? status.trim()
-      : null
-
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    let ownerIdParam = null
-    if (typeof owner_id === 'string' && owner_id.trim() !== '') {
-      if (!uuidRegex.test(owner_id.trim())) {
-        return res.status(400).json({ error: 'owner_id debe ser un UUID válido' })
-      }
-      ownerIdParam = owner_id.trim()
-    }
 
     const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
 
@@ -228,8 +210,8 @@ export const getProjectReport = async (req, res) => {
     `
 
     const params = [
-      statusParam,
-      ownerIdParam,
+      status || null,
+      owner_id || null,
       limit,
       offset
     ]
