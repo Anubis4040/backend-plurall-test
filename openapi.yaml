@@ -553,6 +553,43 @@ paths:
       responses:
         '200': { description: Resultado importación, content: { application/json: { schema: { $ref: '#/components/schemas/ImportTasksResult' } } } }
 
+  /reports/export-tasks:
+    get:
+      tags: [Reports]
+      summary: Exportar tareas a CSV
+      description: Devuelve un archivo CSV (attachment) con hasta 50k tareas filtrables por status, priority, project_id y assigned_to.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+        - in: query
+          name: priority
+          required: false
+          schema: { type: string }
+        - in: query
+          name: project_id
+          required: false
+          schema: { type: string, format: uuid }
+        - in: query
+          name: assigned_to
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: CSV generado
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: |
+                  Archivo CSV con columnas:
+                  id,title,description,status,priority,project_id,assigned_to,created_by,due_date,estimated_hours,actual_hours,created_at,updated_at
+        '400': { description: Parámetros inválidos }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { description: Error exportando }
+
   /projects/{projectId}/timeline:
     get:
       tags: [Projects]
@@ -575,3 +612,68 @@ paths:
         - $ref: '#/components/parameters/EndDateParam'
       responses:
         '200': { description: Timeline, content: { application/json: { schema: { $ref: '#/components/schemas/TimelineResponse' } } } }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Listar notificaciones del usuario autenticado
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: unread
+          required: false
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Lista de notificaciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  notifications:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        user_id: { type: string, format: uuid }
+                        type: { type: string }
+                        title: { type: string }
+                        message: { type: string }
+                        related_id: { type: string, format: uuid, nullable: true }
+                        is_read: { type: boolean }
+                        created_at: { type: string, format: date-time }
+                  pagination: { $ref: '#/components/schemas/PaginationMeta' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /notifications/{id}/read:
+    put:
+      tags: [Notifications]
+      summary: Marcar notificación como leída
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Notificación marcada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  notification:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      is_read: { type: boolean }
+                      created_at: { type: string, format: date-time }
+        '404': { description: No encontrada }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
