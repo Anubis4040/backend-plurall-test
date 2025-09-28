@@ -7,6 +7,7 @@ import authRoutes from './modules/auth/routes/auth.js'
 import userRoutes from './modules/user/routes/user-routes.js'
 import taskRoutes from './modules/task/routes/tasks.js'
 import reportRoutes from './modules/reports/routes/reports.js'
+import projectRoutes from './modules/project/routes/project-routes.js'
 import { errorHandler } from './modules/shared/middlewares/errorHandler.js'
 import { rateLimiter } from './modules/shared/middlewares/rateLimiter.js'
 import { PORT, NODE_ENV, DB_HOST } from './config/env.js'
@@ -30,6 +31,7 @@ apiRouter.use('/auth', authRoutes)
 apiRouter.use('/users', userRoutes)
 apiRouter.use('/tasks', taskRoutes)
 apiRouter.use('/reports', reportRoutes)
+apiRouter.use('/projects', projectRoutes)
 
 app.use('/api', apiRouter)
 

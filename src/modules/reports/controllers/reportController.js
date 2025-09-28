@@ -381,3 +381,93 @@ export const importTasksFromCSV = async (req, res) => {
   }
 }
 
+export const getUserProductivityRanking = async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query
+    const { page, limit, offset } = getPaginationParams(req.query, { defaultLimit: 20, maxLimit: 100 })
+
+    // NOTA: usamos CTE para filtrar por rango temporal y luego agregamos por usuario
+    const rankingQuery = `
+      WITH filtered_tasks AS (
+        SELECT *
+        FROM tasks
+        WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+          AND ($2::timestamptz IS NULL OR created_at <= $2)
+      ),
+      agg AS (
+        SELECT
+          assigned_to AS user_id,
+          COUNT(*) AS total_tasks,
+          COUNT(*) FILTER (WHERE status='completed') AS completed_tasks,
+          SUM(CASE WHEN status='completed' THEN actual_hours ELSE 0 END) AS hours_worked,
+          AVG(CASE WHEN status='completed' AND estimated_hours > 0
+              THEN actual_hours::float / estimated_hours END) AS efficiency_ratio
+        FROM filtered_tasks
+        GROUP BY assigned_to
+      ),
+      joined AS (
+        SELECT
+          u.id,
+          u.username,
+          COALESCE(a.total_tasks,0) AS total_tasks,
+          COALESCE(a.completed_tasks,0) AS completed_tasks,
+            CASE WHEN COALESCE(a.total_tasks,0) > 0
+              THEN (COALESCE(a.completed_tasks,0)::float / a.total_tasks)
+              ELSE NULL END AS completion_rate,
+          COALESCE(a.hours_worked,0) AS hours_worked,
+          a.efficiency_ratio
+        FROM users u
+        LEFT JOIN agg a ON u.id = a.user_id
+        WHERE u.is_active = true
+      ),
+      ranked AS (
+        SELECT *,
+          RANK() OVER (ORDER BY completed_tasks DESC, efficiency_ratio DESC NULLS LAST) AS rank,
+          COUNT(*) OVER() AS total_rows
+        FROM joined
+      )
+      SELECT *
+      FROM ranked
+      ORDER BY rank
+      LIMIT $3 OFFSET $4;
+    `
+
+    const params = [
+      start_date || null,
+      end_date || null,
+      limit,
+      offset
+    ]
+
+    const result = await query(rankingQuery, params)
+
+    const totalRows = result.rows.length ? Number(result.rows[0].total_rows) : 0
+    const ranking = result.rows.map(({ total_rows, ...rest }) => ({
+      ...rest,
+      completed_tasks: Number(rest.completed_tasks),
+      total_tasks: Number(rest.total_tasks),
+      hours_worked: Number(rest.hours_worked),
+      // efficiency_ratio puede ser null
+      efficiency_ratio: rest.efficiency_ratio !== null ? Number(rest.efficiency_ratio) : null,
+      completion_rate: rest.completion_rate !== null ? Number(rest.completion_rate) : null,
+      rank: Number(rest.rank)
+    }))
+
+    // TODO: Mejorar paginacion para que al enviar page > totalPages no refleje total_pages como 0
+
+    res.json({
+      success: true,
+      ranking,
+      pagination: buildMeta(totalRows, page, limit),
+      // meta: {
+      //   start_date: start_date || null,
+      //   end_date: end_date || null,
+      //   order: ['completed_tasks DESC', 'efficiency_ratio DESC NULLS LAST']
+      // }
+    })
+  } catch (error) {
+    logger.error('Error generando ranking de productividad:', error.message)
+    res.status(500).json({ error: 'Error interno del servidor' })
+  }
+}
+
