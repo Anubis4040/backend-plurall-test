@@ -11,6 +11,10 @@ import projectRoutes from './modules/project/routes/project-routes.js'
 import { errorHandler } from './modules/shared/middlewares/errorHandler.js'
 import { rateLimiter } from './modules/shared/middlewares/rateLimiter.js'
 import { PORT, NODE_ENV, DB_HOST } from './config/env.js'
+import YAML from 'yamljs'
+import swaggerUi from "swagger-ui-express";
+
+const swaggerDocument = YAML.load("./openapi.yaml");
 
 const app = express()
 
@@ -34,6 +38,7 @@ apiRouter.use('/reports', reportRoutes)
 apiRouter.use('/projects', projectRoutes)
 
 app.use('/api', apiRouter)
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() })
